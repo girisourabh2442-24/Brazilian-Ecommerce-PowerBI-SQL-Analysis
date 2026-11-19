@@ -1,0 +1,63 @@
+-- =====================================================================
+-- PROJECT 1: OLIST BRAZILIAN E-COMMERCE DATA CROSS-VERIFICATION
+-- Purpose: Verify Power BI DAX metrics against relational database tables
+-- =====================================================================
+
+-- Query 1: Overall Summary (Matches KPI Cards: R$ 13.59M, 99.4K Orders, R$ 136.68 AOV)
+SELECT 
+    COUNT(DISTINCT order_id) AS Total_Orders,
+    SUM(price) AS Total_Product_Revenue,
+    SUM(price) + SUM(freight_value) AS Total_Sales_With_Freight,
+    ROUND(SUM(price) / COUNT(DISTINCT order_id), 2) AS Average_Order_Value_R$
+FROM olist_order_items_dataset;
+
+-- Query 2: Late Delivery Count (Matches 8K Late Orders KPI)
+SELECT 
+    COUNT(order_id) AS Late_Delivery_Orders,
+    ROUND(COUNT(order_id) * 100.0 / (SELECT COUNT(*) FROM olist_orders_dataset WHERE order_status = 'delivered'), 2) AS Late_Delivery_Percentage
+FROM olist_orders_dataset
+WHERE order_delivered_customer_date > order_estimated_delivery_date
+  AND order_status = 'delivered';
+
+-- Query 3: Top 10 Product Categories by Revenue (Matches Horizontal Bar Chart)
+SELECT 
+    p.product_category_name AS Category,
+    ROUND(SUM(oi.price), 2) AS Total_Revenue_R$,
+    COUNT(DISTINCT oi.order_id) AS Total_Orders
+FROM olist_order_items_dataset oi
+JOIN olist_products_dataset p ON oi.product_id = p.product_id
+WHERE p.product_category_name IS NOT NULL
+GROUP BY p.product_category_name
+ORDER BY Total_Revenue_R$ DESC
+LIMIT 10;
+
+-- Query 4: Monthly Revenue Trend (Matches Power BI Line Chart)
+SELECT 
+    DATE_FORMAT(o.order_purchase_timestamp, '%Y-%m') AS Order_Month,
+    ROUND(SUM(oi.price), 2) AS Monthly_Revenue_R$,
+    COUNT(DISTINCT o.order_id) AS Orders_Count
+FROM olist_orders_dataset o
+JOIN olist_order_items_dataset oi ON o.order_id = oi.order_id
+GROUP BY Order_Month
+ORDER BY Order_Month ASC;
+
+-- Query 5: Revenue Share by Payment Type (Matches Donut Chart)
+SELECT 
+    payment_type AS Payment_Method,
+    ROUND(SUM(payment_value), 2) AS Total_Payment_Value_R$,
+    ROUND(SUM(payment_value) * 100.0 / SUM(SUM(payment_value)) OVER(), 2) AS Revenue_Share_Percentage
+FROM olist_order_payments_dataset
+GROUP BY payment_type
+ORDER BY Total_Payment_Value_R$ DESC;
+
+-- Query 6: Top 5 Customer States by Order Volume (Matches Map/State Visual)
+SELECT 
+    c.customer_state AS State_Code,
+    COUNT(DISTINCT o.order_id) AS Total_Orders,
+    ROUND(SUM(oi.price), 2) AS Revenue_R$
+FROM olist_orders_dataset o
+JOIN olist_customers_dataset c ON o.customer_id = c.customer_id
+JOIN olist_order_items_dataset oi ON o.order_id = oi.order_id
+GROUP BY c.customer_state
+ORDER BY Total_Orders DESC
+LIMIT 5;
